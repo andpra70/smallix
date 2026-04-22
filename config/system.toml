@@ -1,0 +1,14 @@
+[kernel]
+name = "smallix"
+version = "0.1.0"
+console = "vga"
+serial = "com1"
+
+[shell]
+prompt = "smallix> "
+autostart = true
+
+[drivers]
+keyboard = "i8042"
+video = "vga_text"
+serial = "uart16550"

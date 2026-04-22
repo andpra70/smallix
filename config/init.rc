@@ -1,0 +1,4 @@
+# Smallix minimal init script reference
+mount devfs /dev
+hostname smallix
+echo "Smallix userland not yet implemented"

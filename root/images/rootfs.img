@@ -1,0 +1,3 @@
+SMALLIXIMG1
+/etc/motd=hello from mounted image
+/bin/demo=echo demo

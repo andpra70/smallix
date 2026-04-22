@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Smallix TinyEMU</title>
+  <style>
+    :root {
+      --bg: #0b1016;
+      --panel: #111926;
+      --line: #243247;
+      --fg: #dce7f7;
+      --muted: #98a8c2;
+      --ok: #76d275;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: radial-gradient(circle at 20% 0%, #152236 0, #0b1016 55%);
+      color: var(--fg);
+      font: 14px/1.45 ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+      min-height: 100vh;
+      padding: 16px;
+    }
+    .wrap {
+      max-width: 1280px;
+      margin: 0 auto;
+      display: grid;
+      gap: 12px;
+    }
+    .bar, .card {
+      border: 1px solid var(--line);
+      background: color-mix(in oklab, var(--panel), black 8%);
+      border-radius: 10px;
+      padding: 10px 12px;
+    }
+    .bar {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+    .btn {
+      appearance: none;
+      border: 1px solid #385079;
+      background: #17243a;
+      color: var(--fg);
+      padding: 7px 11px;
+      border-radius: 8px;
+      cursor: pointer;
+      text-decoration: none;
+      display: inline-block;
+    }
+    .btn:hover { background: #1b2d49; }
+    select.btn {
+      padding-right: 26px;
+    }
+    .tag { color: var(--ok); font-weight: 600; }
+    .muted { color: var(--muted); }
+    iframe {
+      width: 100%;
+      min-height: 760px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: #000;
+    }
+    code { color: #c9d8f2; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="bar">
+      <strong>Smallix in TinyEMU (browser)</strong>
+      <span class="tag">TTY via VGA o seriale emulata</span>
+      <select class="btn" id="displayMode" aria-label="Display mode">
+        <option value="vga">VGA</option>
+        <option value="tty">TTY seriale</option>
+      </select>
+      <button class="btn" id="bootBtn" type="button">Boot / Reboot</button>
+      <a class="btn" href="../out/smallix.img" download>Download smallix.img</a>
+      <a class="btn" href="./tinyemu-smallix.cfg" target="_blank" rel="noopener">View cfg</a>
+    </div>
+
+    <div class="card muted">
+      Questa pagina usa TinyEMU/JSLinux lato browser. Device emulati disponibili: IDE disk (smallix.img), VGA, PS/2 keyboard, timer base.
+      Device host reali (NIC/USB passthrough) non sono esposti direttamente nel browser.
+      La modalita' <code>TTY seriale</code> usa il terminale HTML integrato.
+      <br />
+      Prima esecuzione: lancia <code>./tools/setup-tinyemu-web.sh</code> e servi la root di <code>smallix/</code> con HTTP
+      (es. <code>python3 -m http.server 8000</code>), poi apri <code>/www/tinyemu.html</code>.
+    </div>
+
+    <iframe id="vm" title="Smallix TinyEMU"></iframe>
+  </div>
+
+  <script>
+    function vmSrc() {
+      const mode = document.getElementById("displayMode").value;
+      const graphic = mode === "tty" ? "0" : "1";
+      return "./tinyemu-vm.html?cpu=x86&graphic=" + graphic + "&w=1024&h=768&mem=256&net_url=&url=tinyemu-smallix.cfg";
+    }
+
+    const vm = document.getElementById("vm");
+    document.getElementById("bootBtn").addEventListener("click", () => {
+      vm.src = vmSrc() + "&t=" + Date.now();
+    });
+    document.getElementById("displayMode").addEventListener("change", () => {
+      vm.src = vmSrc() + "&t=" + Date.now();
+    });
+    vm.src = vmSrc() + "&t=" + Date.now();
+  </script>
+</body>
+</html>

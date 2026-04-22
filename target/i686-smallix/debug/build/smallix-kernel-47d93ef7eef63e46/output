@@ -1,0 +1,9 @@
+cargo:rerun-if-changed=/home/andrea/devel/progetti/miei/ai/opencode/minix/minix/smallix/root
+cargo:rerun-if-changed=/home/andrea/devel/progetti/miei/ai/opencode/minix/minix/smallix/root/var/log/boot.log
+cargo:rerun-if-changed=/home/andrea/devel/progetti/miei/ai/opencode/minix/minix/smallix/root/bin/hello
+cargo:rerun-if-changed=/home/andrea/devel/progetti/miei/ai/opencode/minix/minix/smallix/root/bin/showcfg
+cargo:rerun-if-changed=/home/andrea/devel/progetti/miei/ai/opencode/minix/minix/smallix/root/etc/scheduler.conf
+cargo:rerun-if-changed=/home/andrea/devel/progetti/miei/ai/opencode/minix/minix/smallix/root/etc/init.rc
+cargo:rerun-if-changed=/home/andrea/devel/progetti/miei/ai/opencode/minix/minix/smallix/root/etc/network.conf
+cargo:rerun-if-changed=/home/andrea/devel/progetti/miei/ai/opencode/minix/minix/smallix/root/etc/system.toml
+cargo:rerun-if-changed=/home/andrea/devel/progetti/miei/ai/opencode/minix/minix/smallix/root/images/rootfs.img

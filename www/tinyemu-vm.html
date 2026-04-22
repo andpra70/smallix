@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Smallix TinyEMU VM</title>
+  <link href="./tinyemu-assets/style.css" type="text/css" rel="stylesheet"/>
+</head>
+<body>
+<div id="term_wrap">
+  <div id="term_container"></div>
+  <div id="term_bar">
+    <label>
+      <img title="Upload files" src="./tinyemu-assets/images/upload-icon.png">
+      <input type="file" id="files" multiple onchange="on_update_files(this.files)">
+    </label>
+    <progress id="net_progress"></progress>
+  </div>
+</div>
+<div id="term_paste" style="display:none"></div>
+<script>
+  (function () {
+    const XHR = window.XMLHttpRequest;
+    const open = XHR.prototype.open;
+    const send = XHR.prototype.send;
+
+    XHR.prototype.open = function (method, url) {
+      this.__dbg_url = url;
+      this.__dbg_method = method;
+      return open.apply(this, arguments);
+    };
+
+    XHR.prototype.send = function () {
+      const logXhr = (tag) => {
+        let size = 0;
+        if (this.response && this.response.byteLength !== undefined) size = this.response.byteLength;
+        else if (typeof this.responseText === "string") size = this.responseText.length;
+        console.log(tag, this.__dbg_method, this.__dbg_url, "status=", this.status, "size=", size);
+        if (typeof this.__dbg_url === "string" && /tinyemu-disks\/smallix\/blk\d+\.bin(\.en)?$/.test(this.__dbg_url)) {
+          const expected = 256 * 512;
+          if (this.status !== 200 || size !== expected) {
+            let head = "";
+            try {
+              if (typeof this.responseText === "string") {
+                head = this.responseText.slice(0, 120);
+              } else if (this.response && this.response.byteLength !== undefined) {
+                const u8 = new Uint8Array(this.response.slice(0, 120));
+                head = Array.from(u8).map((b) => (b >= 32 && b < 127 ? String.fromCharCode(b) : ".")).join("");
+              }
+            } catch (_) {}
+            console.error("[tinyemu:blk:bad]", this.__dbg_url, "status=", this.status, "size=", size, "expected=", expected, "head=", head);
+          }
+        }
+      };
+
+      const origOnload = this.onload;
+      if (typeof origOnload === "function") {
+        this.onload = function (ev) {
+          logXhr("[tinyemu:xhr:onload]");
+          return origOnload.call(this, ev);
+        };
+      }
+
+      this.addEventListener("load", function () {
+        logXhr("[tinyemu:xhr]");
+      });
+      this.addEventListener("error", function () {
+        console.error("[tinyemu:xhr:error]", this.__dbg_method, this.__dbg_url, "status=", this.status);
+      });
+      return send.apply(this, arguments);
+    };
+
+    window.addEventListener("error", function (e) {
+      console.error("[tinyemu:window:error]", e.message, e.filename, e.lineno, e.colno);
+    });
+    window.addEventListener("unhandledrejection", function (e) {
+      console.error("[tinyemu:promise:rejection]", e.reason);
+    });
+  })();
+</script>
+<script src="./tinyemu-assets/term.js"></script>
+<script src="./tinyemu-assets/jslinux.js"></script>
+</body>
+</html>
