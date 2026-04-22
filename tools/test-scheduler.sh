@@ -7,13 +7,8 @@ SERIAL_LOG="${TMPDIR:-/tmp}/smallix-sched-serial.log"
 "$ROOT_DIR/tools/mkiso.sh" >/dev/null
 rm -f "$SERIAL_LOG"
 
-if ! command -v qemu-system-x86_64 >/dev/null 2>&1; then
-  echo "qemu-system-x86_64 not found"
-  exit 1
-fi
-
 set +e
-timeout 12s qemu-system-x86_64 \
+timeout 12s "$ROOT_DIR/tools/qemu-safe.sh" \
   -m 256M \
   -cdrom "$ROOT_DIR/out/smallix.iso" \
   -boot d \

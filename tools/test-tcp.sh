@@ -8,7 +8,7 @@ SERIAL_LOG="${TMPDIR:-/tmp}/smallix-tcp-serial.log"
 rm -f "$SERIAL_LOG"
 
 set +e
-timeout 15s qemu-system-x86_64 \
+timeout 15s "$ROOT_DIR/tools/qemu-safe.sh" \
   -m 256M \
   -cdrom "$ROOT_DIR/out/smallix.iso" \
   -boot d \

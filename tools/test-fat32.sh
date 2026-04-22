@@ -9,13 +9,8 @@ FAT_IMG="$ROOT_DIR/out/fat32.img"
 "$ROOT_DIR/tools/mkiso.sh" >/dev/null
 "$ROOT_DIR/tools/mkfat32.sh" >/dev/null
 
-if ! command -v qemu-system-x86_64 >/dev/null 2>&1; then
-  echo "qemu-system-x86_64 not found"
-  exit 1
-fi
-
 set +e
-timeout 12s qemu-system-x86_64 \
+timeout 12s "$ROOT_DIR/tools/qemu-safe.sh" \
   -m 256M \
   -display none \
   -serial stdio \

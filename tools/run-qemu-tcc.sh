@@ -6,16 +6,7 @@ ISO_FILE="$ROOT_DIR/out/tccboot.iso"
 
 "$ROOT_DIR/tools/mkiso.sh"
 
-if command -v qemu-system-x86_64 >/dev/null 2>&1; then
-  QEMU="qemu-system-x86_64"
-elif command -v qemu-system-i386 >/dev/null 2>&1; then
-  QEMU="qemu-system-i386"
-else
-  echo "qemu-system-x86_64 or qemu-system-i386 not found"
-  exit 1
-fi
-
-exec "$QEMU" \
+exec "$ROOT_DIR/tools/qemu-safe.sh" \
   -m 256M \
   -serial stdio \
   -netdev user,id=n0,guestfwd=tcp:10.0.2.100:2323-cmd:/bin/cat \

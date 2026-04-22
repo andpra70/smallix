@@ -172,8 +172,13 @@ const COMMANDS: &[Command] = &[
     },
     Command {
         name: "mount",
-        help: "mount </dev/ramfs|/dev/hda|/dev/loop0|/dev/usb0|<img_path>>",
+        help: "mount <source> [target]",
         run: fs::mount,
+    },
+    Command {
+        name: "umount",
+        help: "umount [target]",
+        run: fs::umount,
     },
     Command {
         name: "mounts",

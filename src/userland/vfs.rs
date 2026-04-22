@@ -51,23 +51,33 @@ pub struct Vfs {
     active: ActiveFs,
     kind: FsKind,
     fat: Option<fat32::Fat32>,
-    mtab_line: [u8; 48],
+    mount_point: [u8; PATH_CAP],
+    mount_point_len: usize,
+    mtab_line: [u8; 96],
     mtab_len: usize,
 }
 
 impl Vfs {
     pub fn new() -> Self {
-        let mut mtab = [0u8; 48];
+        let mut mtab = [0u8; 96];
         let line = b"/dev/ramfs / ramfs rw 0 0\n";
         mtab[..line.len()].copy_from_slice(line);
+        let mut mount_point = [0u8; PATH_CAP];
+        mount_point[0] = b'/';
         Self {
             files: [FileEntry::empty(); MAX_FILES],
             active: ActiveFs::Ram,
             kind: FsKind::Smallix,
             fat: None,
+            mount_point,
+            mount_point_len: 1,
             mtab_line: mtab,
             mtab_len: line.len(),
         }
+    }
+
+    pub fn mount_point(&self) -> &str {
+        str::from_utf8(&self.mount_point[..self.mount_point_len]).unwrap_or("/")
     }
 
     pub fn active_name(&self) -> &'static str {
@@ -91,7 +101,9 @@ impl Vfs {
             let Some(fs) = self.fat else {
                 return Err("fat32 not mounted");
             };
-            return fat32::create_file(fs, path, content);
+            let mut mapped = [0u8; PATH_CAP];
+            let inner = self.map_path_to_mounted(path, &mut mapped).ok_or("outside mountpoint")?;
+            return fat32::create_file(fs, inner, content);
         }
         if path.is_empty() || path.len() >= PATH_CAP {
             return Err("invalid path");
@@ -118,7 +130,9 @@ impl Vfs {
             let Some(fs) = self.fat else {
                 return Err("fat32 not mounted");
             };
-            return fat32::write_file(fs, path, content);
+            let mut mapped = [0u8; PATH_CAP];
+            let inner = self.map_path_to_mounted(path, &mut mapped).ok_or("outside mountpoint")?;
+            return fat32::write_file(fs, inner, content);
         }
         if content.len() > DATA_CAP {
             return Err("content too large");
@@ -136,7 +150,9 @@ impl Vfs {
     pub fn read_file<'a>(&'a self, path: &str) -> Option<&'a [u8]> {
         if self.kind == FsKind::Fat32 {
             let fs = self.fat?;
-            return fat32::read_file(fs, path);
+            let mut mapped = [0u8; PATH_CAP];
+            let inner = self.map_path_to_mounted(path, &mut mapped)?;
+            return fat32::read_file(fs, inner);
         }
         let i = self.find_index(path)?;
         let f = &self.files[i];
@@ -148,7 +164,9 @@ impl Vfs {
             let Some(fs) = self.fat else {
                 return Err("fat32 not mounted");
             };
-            return fat32::remove_file(fs, path);
+            let mut mapped = [0u8; PATH_CAP];
+            let inner = self.map_path_to_mounted(path, &mut mapped).ok_or("outside mountpoint")?;
+            return fat32::remove_file(fs, inner);
         }
         let Some(i) = self.find_index(path) else {
             return Err("file not found");
@@ -186,6 +204,12 @@ impl Vfs {
     }
 
     pub fn mount(&mut self, source: &str, cwd: &str) -> Result<&'static str, &'static str> {
+        self.mount_at(source, "/", cwd)
+    }
+
+    pub fn mount_at(&mut self, source: &str, target: &str, cwd: &str) -> Result<&'static str, &'static str> {
+        self.set_mount_point(target, cwd)?;
+
         if source == "/dev/ramfs" {
             self.active = ActiveFs::Ram;
             let meta = fat32::probe(DeviceId::Ram).map_err(|_| "ramfs is not fat32")?;
@@ -237,19 +261,94 @@ impl Vfs {
         Ok("mounted image file on /dev/loop0")
     }
 
+    pub fn umount_at(&mut self, target: &str, cwd: &str) -> Result<&'static str, &'static str> {
+        let mut abs = [0u8; PATH_CAP];
+        let p = Self::resolve_path(cwd, target, &mut abs)?;
+        let cur = self.mount_point();
+        if cur == "/" {
+            return Err("nothing mounted on /mnt");
+        }
+        if p != cur {
+            return Err("not mounted");
+        }
+        self.mount_point[0] = b'/';
+        self.mount_point_len = 1;
+        self.refresh_mtab();
+        Ok("unmounted")
+    }
+
     pub fn refresh_mtab(&mut self) {
+        let target = self.mount_point();
         let line = match (self.active, self.kind) {
-            (ActiveFs::Ram, _) => "/dev/ramfs / ramfs rw 0 0\n",
-            (ActiveFs::Hda, FsKind::Fat32) => "/dev/hda / fat32 rw 0 0\n",
-            (ActiveFs::Hda, FsKind::Smallix) => "/dev/hda / hdafs rw 0 0\n",
-            (ActiveFs::Loop0, FsKind::Fat32) => "/dev/loop0 / fat32 rw 0 0\n",
-            (ActiveFs::Loop0, FsKind::Smallix) => "/dev/loop0 / loopfs rw 0 0\n",
-            (ActiveFs::Usb0, FsKind::Fat32) => "/dev/usb0 / fat32 rw 0 0\n",
-            (ActiveFs::Usb0, FsKind::Smallix) => "/dev/usb0 / usbfs rw 0 0\n",
+            (ActiveFs::Ram, _) => {
+                if target == "/" { "/dev/ramfs / ramfs rw 0 0\n" } else { "/dev/ramfs <mnt> ramfs rw 0 0\n" }
+            }
+            (ActiveFs::Hda, FsKind::Fat32) => {
+                if target == "/" { "/dev/hda / fat32 rw 0 0\n" } else { "/dev/hda <mnt> fat32 rw 0 0\n" }
+            }
+            (ActiveFs::Hda, FsKind::Smallix) => {
+                if target == "/" { "/dev/hda / hdafs rw 0 0\n" } else { "/dev/hda <mnt> hdafs rw 0 0\n" }
+            }
+            (ActiveFs::Loop0, FsKind::Fat32) => {
+                if target == "/" { "/dev/loop0 / fat32 rw 0 0\n" } else { "/dev/loop0 <mnt> fat32 rw 0 0\n" }
+            }
+            (ActiveFs::Loop0, FsKind::Smallix) => {
+                if target == "/" { "/dev/loop0 / loopfs rw 0 0\n" } else { "/dev/loop0 <mnt> loopfs rw 0 0\n" }
+            }
+            (ActiveFs::Usb0, FsKind::Fat32) => {
+                if target == "/" { "/dev/usb0 / fat32 rw 0 0\n" } else { "/dev/usb0 <mnt> fat32 rw 0 0\n" }
+            }
+            (ActiveFs::Usb0, FsKind::Smallix) => {
+                if target == "/" { "/dev/usb0 / usbfs rw 0 0\n" } else { "/dev/usb0 <mnt> usbfs rw 0 0\n" }
+            }
         };
-        self.mtab_len = line.len();
-        self.mtab_line[..self.mtab_len].copy_from_slice(line.as_bytes());
-        let _ = self.write_file("/etc/mtab", line.as_bytes());
+        if target == "/" {
+            self.mtab_len = line.len();
+            self.mtab_line[..self.mtab_len].copy_from_slice(line.as_bytes());
+            let _ = self.write_file("/etc/mtab", line.as_bytes());
+        } else {
+            let src = match self.active {
+                ActiveFs::Ram => "/dev/ramfs",
+                ActiveFs::Hda => "/dev/hda",
+                ActiveFs::Loop0 => "/dev/loop0",
+                ActiveFs::Usb0 => "/dev/usb0",
+            };
+            let fstype = match (self.active, self.kind) {
+                (_, FsKind::Fat32) => "fat32",
+                (ActiveFs::Ram, FsKind::Smallix) => "ramfs",
+                (ActiveFs::Hda, FsKind::Smallix) => "hdafs",
+                (ActiveFs::Loop0, FsKind::Smallix) => "loopfs",
+                (ActiveFs::Usb0, FsKind::Smallix) => "usbfs",
+            };
+            let mut tmp = [0u8; 96];
+            let mut n = 0usize;
+            for &b in src.as_bytes() {
+                tmp[n] = b;
+                n += 1;
+            }
+            tmp[n] = b' ';
+            n += 1;
+            for &b in target.as_bytes() {
+                tmp[n] = b;
+                n += 1;
+            }
+            tmp[n] = b' ';
+            n += 1;
+            for &b in fstype.as_bytes() {
+                tmp[n] = b;
+                n += 1;
+            }
+            for &b in b" rw 0 0\n" {
+                tmp[n] = b;
+                n += 1;
+            }
+            self.mtab_len = n;
+            self.mtab_line[..n].copy_from_slice(&tmp[..n]);
+
+            let mut mtab_path = [0u8; PATH_CAP];
+            let mtab_vis = self.join_visible_mount_path("/etc/mtab", &mut mtab_path).unwrap_or("/etc/mtab");
+            let _ = self.write_file(mtab_vis, &tmp[..n]);
+        }
     }
 
     fn active_device(&self) -> DeviceId {
@@ -476,10 +575,17 @@ impl Vfs {
 
     pub fn is_dir(&self, path: &str) -> bool {
         if self.kind == FsKind::Fat32 {
+            if self.is_mount_scaffold_dir(path) {
+                return true;
+            }
             let Some(fs) = self.fat else {
                 return false;
             };
-            return fat32::is_dir(fs, path);
+            let mut mapped = [0u8; PATH_CAP];
+            let Some(inner) = self.map_path_to_mounted(path, &mut mapped) else {
+                return false;
+            };
+            return fat32::is_dir(fs, inner);
         }
         if path == "/" {
             return true;
@@ -507,7 +613,13 @@ impl Vfs {
             let Some(fs) = self.fat else {
                 return Err("fat32 not mounted");
             };
-            return fat32::list_dir(fs, path, |name| cb(name));
+            if let Some(name) = self.mount_scaffold_child(path) {
+                cb(name);
+                return Ok(());
+            }
+            let mut mapped = [0u8; PATH_CAP];
+            let inner = self.map_path_to_mounted(path, &mut mapped).ok_or("no such file or directory")?;
+            return fat32::list_dir(fs, inner, |name| cb(name));
         }
         if self.read_file(path).is_some() {
             cb(path.rsplit('/').next().unwrap_or(path));
@@ -549,5 +661,96 @@ impl Vfs {
             cb(name);
         });
         Ok(())
+    }
+
+    fn set_mount_point(&mut self, target: &str, cwd: &str) -> Result<(), &'static str> {
+        let mut abs = [0u8; PATH_CAP];
+        let p = Self::resolve_path(cwd, target, &mut abs)?;
+        if !p.starts_with("/mnt/") && p != "/" {
+            return Err("mount target must be / or /mnt/<name>");
+        }
+        self.mount_point_len = p.len();
+        self.mount_point[..self.mount_point_len].copy_from_slice(p.as_bytes());
+        Ok(())
+    }
+
+    fn map_path_to_mounted<'a>(&self, vis_path: &str, out: &'a mut [u8; PATH_CAP]) -> Option<&'a str> {
+        let mnt = self.mount_point();
+        if mnt == "/" {
+            let n = vis_path.len();
+            if n >= PATH_CAP {
+                return None;
+            }
+            out[..n].copy_from_slice(vis_path.as_bytes());
+            return str::from_utf8(&out[..n]).ok();
+        }
+        if vis_path == mnt {
+            out[0] = b'/';
+            return str::from_utf8(&out[..1]).ok();
+        }
+        if vis_path.starts_with(mnt) && vis_path.len() > mnt.len() && vis_path.as_bytes()[mnt.len()] == b'/' {
+            let suffix = &vis_path[mnt.len()..];
+            if suffix.len() >= PATH_CAP {
+                return None;
+            }
+            out[..suffix.len()].copy_from_slice(suffix.as_bytes());
+            return str::from_utf8(&out[..suffix.len()]).ok();
+        }
+        None
+    }
+
+    fn join_visible_mount_path<'a>(&self, inner: &str, out: &'a mut [u8; PATH_CAP]) -> Option<&'a str> {
+        let mnt = self.mount_point();
+        if mnt == "/" {
+            let n = inner.len();
+            if n >= PATH_CAP {
+                return None;
+            }
+            out[..n].copy_from_slice(inner.as_bytes());
+            return str::from_utf8(&out[..n]).ok();
+        }
+        let suffix = if inner == "/" { "" } else { inner };
+        let total = mnt.len() + suffix.len();
+        if total >= PATH_CAP {
+            return None;
+        }
+        out[..mnt.len()].copy_from_slice(mnt.as_bytes());
+        if !suffix.is_empty() {
+            out[mnt.len()..total].copy_from_slice(suffix.as_bytes());
+        }
+        str::from_utf8(&out[..total]).ok()
+    }
+
+    fn is_mount_scaffold_dir(&self, path: &str) -> bool {
+        let mnt = self.mount_point();
+        if mnt == "/" {
+            return path == "/";
+        }
+        if path == "/" || path == mnt {
+            return true;
+        }
+        mnt.starts_with(path)
+            && mnt.len() > path.len()
+            && path != "/"
+            && mnt.as_bytes()[path.len()] == b'/'
+    }
+
+    fn mount_scaffold_child<'a>(&'a self, path: &str) -> Option<&'a str> {
+        let mnt = self.mount_point();
+        if mnt == "/" {
+            return None;
+        }
+        if path == "/" {
+            return mnt.strip_prefix('/').and_then(|s| s.split('/').next());
+        }
+        if mnt.starts_with(path)
+            && mnt.len() > path.len()
+            && path != "/"
+            && mnt.as_bytes()[path.len()] == b'/'
+        {
+            let rest = &mnt[path.len() + 1..];
+            return rest.split('/').next();
+        }
+        None
     }
 }

@@ -363,19 +363,56 @@ pub fn pwd(ctx: &mut Context, _args: &str) {
 }
 
 pub fn mount(ctx: &mut Context, args: &str) {
-    let source = args.trim();
-    if source.is_empty() {
+    let raw = args.trim();
+    if raw.is_empty() {
         shell::println_fmt(format_args!("mounted fs: {}", ctx.fs.active_name()));
-        shell::println("usage: mount </dev/ramfs|/dev/hda|/dev/loop0|/dev/usb0|<img_path>>");
+        shell::println("usage: mount <source> [target]");
+        shell::println("source: /dev/ramfs|/dev/hda|/dev/loop0|/dev/usb0|<img_path>");
+        shell::println("target: / or /mnt/<name> (default /)");
         return;
     }
+    let mut it = raw.split_whitespace();
+    let source = it.next().unwrap_or("");
+    let target = it.next().unwrap_or("/");
+    if it.next().is_some() {
+        shell::println("usage: mount <source> [target]");
+        return;
+    }
+
     let mut cwd_buf = [0u8; 64];
     let cwd = ctx.cwd();
     let cwd_len = cwd.len();
     cwd_buf[..cwd_len].copy_from_slice(cwd.as_bytes());
     let cwd_copy = core::str::from_utf8(&cwd_buf[..cwd_len]).unwrap_or("/");
-    match ctx.fs.mount(source, cwd_copy) {
+    match ctx.fs.mount_at(source, target, cwd_copy) {
         Ok(msg) => shell::println(msg),
+        Err(e) => shell::println(e),
+    }
+}
+
+pub fn umount(ctx: &mut Context, args: &str) {
+    let mut target_buf = [0u8; 64];
+    let target = if args.trim().is_empty() {
+        let mp = ctx.fs.mount_point();
+        let n = mp.len().min(target_buf.len());
+        target_buf[..n].copy_from_slice(&mp.as_bytes()[..n]);
+        core::str::from_utf8(&target_buf[..n]).unwrap_or("/")
+    } else {
+        args.trim()
+    };
+    let mut cwd_buf = [0u8; 64];
+    let cwd = ctx.cwd();
+    let cwd_len = cwd.len();
+    cwd_buf[..cwd_len].copy_from_slice(cwd.as_bytes());
+    let cwd_copy = core::str::from_utf8(&cwd_buf[..cwd_len]).unwrap_or("/");
+
+    match ctx.fs.umount_at(target, cwd_copy) {
+        Ok(msg) => {
+            if ctx.cwd().starts_with("/mnt/") {
+                let _ = ctx.set_cwd("/");
+            }
+            shell::println(msg);
+        }
         Err(e) => shell::println(e),
     }
 }

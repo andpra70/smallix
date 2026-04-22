@@ -29,6 +29,13 @@ fetch "$BASE/vgabios.bin" "$ASSETS_DIR/vgabios.bin"
 fetch "$BASE/x86emu-wasm.js" "$WWW_DIR/x86emu-wasm.js"
 fetch "$BASE/x86emu-wasm.wasm" "$WWW_DIR/x86emu-wasm.wasm"
 
+if [[ "${TINYEMU_SKIP_DISK_SPLIT:-0}" == "1" ]]; then
+  echo "TinyEMU web assets ready in: $ASSETS_DIR"
+  echo "Disk split skipped (TINYEMU_SKIP_DISK_SPLIT=1)"
+  echo "Serve the project root and open: /www/tinyemu.html"
+  exit 0
+fi
+
 if [[ ! -f "$ROOT_DIR/out/smallix.img" ]]; then
   echo "smallix.img missing, generating via tools/mkdisk.sh"
   "$ROOT_DIR/tools/mkdisk.sh"

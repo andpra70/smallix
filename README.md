@@ -55,7 +55,8 @@ Smallix e' un micro-sistema didattico in Rust con kernel `no_std` bootabile con 
 - `rm <path>`
 - `cp <src> <dst>`
 - `mv <src> <dst>`
-- `mount </dev/ramfs|/dev/hda|/dev/loop0|/dev/usb0|<img_path>>`
+- `mount <source> [target]`
+- `umount [target]`
 - `mounts`
 - `sh` (subshell, `exit` per tornare)
 - `ifconfig [show|up|down|set <ip> <mask> <gw>]`
@@ -82,11 +83,11 @@ Filesystem:
 
 - path assoluti e relativi con `.` e `..`
 - cwd persistente nel prompt (`smallix:/path$`)
-- `mount /dev/ramfs` monta un device RAM (deve contenere FAT32 valido)
-- `mount /dev/hda` monta root fs persistente FAT32 su disco (QEMU `-hda`)
-- `mount /dev/loop0` monta una immagine embedded
-- `mount /dev/usb0` monta fs su block USB (richiede controller USB rilevato)
-- `mount /images/rootfs.img` monta una immagine `.img` dal FS
+- `mount /dev/ramfs [/mnt/ramfs]` monta un device RAM (deve contenere FAT32 valido)
+- `mount /dev/hda [/mnt/hda]` monta fs persistente FAT32 su disco (QEMU `-hda`)
+- `mount /dev/loop0 [/mnt/loop0]` monta una immagine embedded
+- `mount /dev/usb0 [/mnt/usb0]` monta fs su block USB (richiede controller USB rilevato)
+- `mount /images/rootfs.img [/mnt/loop0]` monta una immagine `.img` dal FS
 - `/etc/mtab` e' aggiornato dal VFS a ogni mount
 - i file comando in `/bin/*` possono essere caricati con `exec/execve`
 - il seed rootfs viene copiato dalla cartella `root/` dentro `out/fat32.img` (`tools/mkfat32.sh`)

@@ -11,13 +11,8 @@ LOG2="${TMPDIR:-/tmp}/smallix-persist-serial-2.log"
 rm -f "$LOG1" "$LOG2"
 truncate -s 16M "$IMG_FILE"
 
-if ! command -v qemu-system-x86_64 >/dev/null 2>&1; then
-  echo "qemu-system-x86_64 not found"
-  exit 1
-fi
-
 # First boot seeds the persistence marker on /dev/hda.
-timeout 15s qemu-system-x86_64 \
+timeout 15s "$ROOT_DIR/tools/qemu-safe.sh" \
   -m 256M \
   -cdrom "$ISO_FILE" \
   -boot d \
@@ -36,7 +31,7 @@ if ! grep -q "hda persistence SEED" "$LOG1" && ! grep -q "hda persistence PASS" 
 fi
 
 # Second boot must observe the marker created in first boot.
-timeout 15s qemu-system-x86_64 \
+timeout 15s "$ROOT_DIR/tools/qemu-safe.sh" \
   -m 256M \
   -cdrom "$ISO_FILE" \
   -boot d \
